@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { SpeechRecognition } from '@capacitor-community/speech-recognition';
+
 (() => {
   'use strict';
   const STORAGE_KEY = 'malayalam-notes-v1';
@@ -28,6 +31,7 @@
   let finalTranscript = '';
   let recognitionSupported = false;
   let translationInProgress = false;
+  const isNativeApp = Capacitor.isNativePlatform();
 
   function readNotes() {
     try {
@@ -63,21 +67,34 @@
     saveButton.disabled = value;
     translationStatus.textContent = value ? 'Translating…' : '';
   }
-  function makeRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return null;
-    const instance = new SpeechRecognition();
+  function setListeningUi(active, statusText = '') {
+    listening = active;
+    micButton.classList.toggle('is-listening', active);
+    micButton.setAttribute('aria-pressed', String(active));
+    micLabel.textContent = active
+      ? (isNativeApp ? 'Listening… finish in Android window' : 'Listening… tap to stop')
+      : 'Speak in Malayalam';
+    micButton.disabled = Boolean(active && isNativeApp);
+    if (statusText) micStatus.textContent = statusText;
+  }
+
+  function appendTranscript(text) {
+    const current = malayalamInput.value.trim();
+    const captured = String(text || '').trim();
+    if (captured) malayalamInput.value = [current, captured].filter(Boolean).join(' ');
+  }
+
+  function makeBrowserRecognition() {
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) return null;
+    const instance = new SpeechRecognitionAPI();
     instance.lang = 'ml-IN';
     instance.continuous = true;
     instance.interimResults = true;
     instance.maxAlternatives = 1;
     instance.onstart = () => {
-      listening = true;
       finalTranscript = malayalamInput.value.trim();
-      micButton.classList.add('is-listening');
-      micButton.setAttribute('aria-pressed', 'true');
-      micLabel.textContent = 'Listening… tap to stop';
-      micStatus.textContent = 'Listening for Malayalam. Speak clearly and tap to stop.';
+      setListeningUi(true, 'Listening for Malayalam. Speak clearly and tap to stop.');
     };
     instance.onresult = (event) => {
       let interim = '';
@@ -93,39 +110,85 @@
     };
     instance.onerror = (event) => {
       const messages = {
-        'not-allowed': 'Microphone permission was blocked. Allow microphone access in your browser settings.',
+        'not-allowed': 'Microphone permission was blocked. Allow microphone access in settings.',
         'service-not-allowed': 'This browser does not allow speech recognition for this site.',
         'audio-capture': 'No microphone was found. You can type Malayalam into the box instead.',
         'no-speech': 'No speech was heard. Tap the microphone and try again.',
         'network': 'Speech recognition needs an internet connection in this browser.'
       };
-      micStatus.textContent = messages[event.error] || `Speech recognition stopped (${event.error}). You can type the words instead.`;
+      micStatus.textContent = messages[event.error] || ('Speech recognition stopped (' + event.error + '). You can type instead.');
     };
     instance.onend = () => {
-      listening = false;
-      micButton.classList.remove('is-listening');
-      micButton.setAttribute('aria-pressed', 'false');
-      micLabel.textContent = 'Speak in Malayalam';
-      if (!micStatus.textContent.startsWith('Microphone permission') && !micStatus.textContent.startsWith('This browser') && !micStatus.textContent.startsWith('No microphone') && !micStatus.textContent.startsWith('No speech') && !micStatus.textContent.startsWith('Speech recognition stopped') && !micStatus.textContent.startsWith('Speech recognition needs')) {
-        micStatus.textContent = malayalamInput.value.trim() ? 'Speech captured. Review the Malayalam words below.' : 'Ready when you are.';
+      setListeningUi(false);
+      const knownError = ['Microphone permission', 'This browser', 'No microphone', 'No speech', 'Speech recognition stopped', 'Speech recognition needs'];
+      if (!knownError.some(prefix => micStatus.textContent.startsWith(prefix))) {
+        micStatus.textContent = malayalamInput.value.trim()
+          ? 'Speech captured. Review the Malayalam words below.'
+          : 'Ready when you are.';
       }
     };
     return instance;
   }
 
   function setupRecognition() {
-    recognition = makeRecognition();
+    if (isNativeApp) {
+      recognitionSupported = true;
+      micStatus.textContent = 'Ready. Tap the microphone; Android will open its speech window.';
+      return;
+    }
+    recognition = makeBrowserRecognition();
     recognitionSupported = Boolean(recognition);
     if (!recognitionSupported) {
       micButton.disabled = true;
-      micButton.title = 'Speech recognition is not available in this browser. Type Malayalam below or open this app in Chrome.';
-      micStatus.textContent = 'Microphone speech recognition is not available in this browser. Try Chrome, or type in Malayalam below.';
+      micButton.title = 'Speech recognition is not available here. You can still type Malayalam below.';
+      micStatus.textContent = 'Speech recognition is not available in this browser. You can type Malayalam below.';
       micButton.style.opacity = '0.65';
+    }
+  }
+
+  async function captureNativeSpeech() {
+    if (listening) return;
+    setListeningUi(true, 'Checking microphone permission and opening Android speech recognition…');
+    try {
+      const availability = await SpeechRecognition.available();
+      if (!availability.available) throw new Error('Speech recognition is not available on this device.');
+      let permission = await SpeechRecognition.checkPermissions();
+      if (permission.speechRecognition !== 'granted') {
+        permission = await SpeechRecognition.requestPermissions();
+      }
+      if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission was not granted.');
+      micStatus.textContent = 'Speak Malayalam in the Android speech window, then finish there.';
+      const result = await SpeechRecognition.start({
+        language: 'ml-IN',
+        maxResults: 1,
+        prompt: 'Speak in Malayalam',
+        partialResults: false,
+        popup: true
+      });
+      const transcript = Array.isArray(result.matches) ? result.matches[0] : '';
+      if (transcript && transcript.trim()) {
+        appendTranscript(transcript);
+        micStatus.textContent = 'Speech captured. Review the Malayalam words below before translating.';
+      } else {
+        micStatus.textContent = 'No words were recognized. Try again, or type Malayalam below.';
+      }
+    } catch (error) {
+      console.error('Malayalam speech recognition failed:', error);
+      const reason = error && error.message ? error.message : '';
+      micStatus.textContent = reason.toLowerCase().includes('permission')
+        ? 'Microphone permission is needed. Allow it in Android Settings, then try again.'
+        : 'Could not start Malayalam speech recognition. Check that a speech service is installed and try again, or type Malayalam below.';
+    } finally {
+      setListeningUi(false);
     }
   }
 
   micButton.addEventListener('click', () => {
     if (!recognitionSupported) return;
+    if (isNativeApp) {
+      captureNativeSpeech();
+      return;
+    }
     if (listening) {
       recognition.stop();
       return;
@@ -133,11 +196,10 @@
     try {
       micStatus.textContent = 'Requesting microphone…';
       recognition.start();
-    } catch (err) {
+    } catch (_) {
       micStatus.textContent = 'The microphone is busy. Wait a moment and tap again.';
     }
   });
-
   // Free, keyless Google Translate web endpoint for this personal-use prototype.
   // It is not an officially supported public API and may change or stop working.
   async function translateMalayalamToEnglish(text) {
@@ -390,7 +452,7 @@
   setupRecognition();
   renderNotes();
 
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  if (!isNativeApp && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => {
         // The app still works without offline app-shell caching.
