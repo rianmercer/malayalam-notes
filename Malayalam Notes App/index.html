@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#176b58">
+  <meta name="description" content="Save Malayalam voice notes with English translations, right on your phone.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <title>Malayalam Notes</title>
+</head>
+<body>
+  <main class="app-shell" id="app">
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">മ</div>
+      <div>
+        <p class="eyebrow">YOUR EVERYDAY HELPER</p>
+        <h1>Malayalam Notes</h1>
+        <p class="subtitle">Speak it. Save it. Remember it.</p>
+      </div>
+    </header>
+
+    <section class="composer panel" aria-labelledby="create-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">NEW NOTE</p>
+          <h2 id="create-heading">What should we remember?</h2>
+        </div>
+        <span class="offline-pill" title="Notes are stored in this browser">On this device</span>
+      </div>
+
+      <label class="field-label" for="note-title">Note title <span class="optional">(optional)</span></label>
+      <input id="note-title" type="text" maxlength="100" placeholder="e.g. Grocery shopping" autocomplete="off">
+
+      <div class="mic-row">
+        <button id="mic-button" class="mic-button" type="button" aria-describedby="mic-help">
+          <span class="mic-symbol" aria-hidden="true">🎙️</span>
+          <span id="mic-label">Speak in Malayalam</span>
+        </button>
+      </div>
+      <p id="mic-help" class="helper">Tap the microphone and speak naturally in Malayalam. You can correct the words below.</p>
+      <p id="mic-status" class="status" role="status" aria-live="polite">Ready when you are.</p>
+
+      <label class="field-label" for="malayalam-text">Malayalam transcript</label>
+      <textarea id="malayalam-text" rows="3" maxlength="1500" lang="ml" placeholder="ഇവിടെ മലയാളത്തിൽ പറയുന്നതോ എഴുതുന്നതോ വരും…"></textarea>
+      <p class="helper">Please review the transcript before saving. Speech recognition can sometimes hear a word incorrectly.</p>
+
+      <div class="translate-row">
+        <button id="translate-button" class="button button-secondary" type="button">Translate to English</button>
+        <span id="translation-status" class="helper" role="status" aria-live="polite"></span>
+      </div>
+
+      <label class="field-label" for="english-text">English translation</label>
+      <textarea id="english-text" rows="3" maxlength="2000" placeholder="The English translation will appear here. You can edit it."></textarea>
+      <p class="helper">Translations may not be perfect. Check important items and quantities before relying on them.</p>
+
+      <div class="primary-actions">
+        <button id="save-button" class="button button-primary" type="button">Save both languages</button>
+        <button id="clear-button" class="button button-quiet" type="button">Clear</button>
+      </div>
+      <p id="form-message" class="form-message" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="notes-section" aria-labelledby="notes-heading">
+      <div class="section-heading notes-heading">
+        <div>
+          <p class="eyebrow">YOUR SAVED NOTES</p>
+          <h2 id="notes-heading">Notes <span id="note-count" class="count-badge">0</span></h2>
+        </div>
+        <button id="export-button" class="text-button" type="button">Back up</button>
+      </div>
+      <label class="sr-only" for="search-notes">Search saved notes</label>
+      <input id="search-notes" class="search-input" type="search" placeholder="Search your notes…" autocomplete="off">
+      <div id="notes-list" class="notes-list" aria-live="polite"></div>
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon" aria-hidden="true">✍️</div>
+        <h3>Your notes will appear here</h3>
+        <p>Speak in Malayalam, check the English, and save. Both versions will stay together here.</p>
+      </div>
+      <p class="privacy-note"><span aria-hidden="true">🔒</span> Notes stay in this browser on this device. They are not automatically synced to another phone.</p>
+      <details class="backup-details">
+        <summary>Restore a backup</summary>
+        <p class="helper">Choose a backup JSON file previously exported from this app. Restored notes are added to the notes on this device.</p>
+        <label class="field-label" for="import-file">Backup file</label>
+        <input id="import-file" type="file" accept="application/json,.json">
+        <button id="import-button" class="button button-secondary import-button" type="button">Restore backup</button>
+        <p id="backup-status" class="form-message" role="status" aria-live="polite"></p>
+      </details>
+    </section>
+
+    <footer class="footer-note">Made with care for everyday life · Free to use</footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
