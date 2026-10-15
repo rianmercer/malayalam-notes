@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { SpeechRecognition } from '@capacitor-community/speech-recognition';
+import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
 
 (() => {
   'use strict';
@@ -32,6 +32,13 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
   let recognitionSupported = false;
   let translationInProgress = false;
   const isNativeApp = Capacitor.isNativePlatform();
+  let nativeListenersReady = null;
+  let nativeFinalItems = [];
+  let nativeCurrentPartial = '';
+  let nativeBaseItems = [];
+  let nativeStopRequested = false;
+  let nativeStartPending = false;
+  let nativeFatalError = false;
 
   function readNotes() {
     try {
@@ -67,21 +74,48 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
     saveButton.disabled = value;
     translationStatus.textContent = value ? 'Translating…' : '';
   }
+  function stripBullet(value) {
+    return String(value || '').replace(/^\\s*(?:[•·*–-]|\\d+[.)])\\s*/u, '').trim();
+  }
+
+  function parseSpokenItems(value) {
+    return String(value || '')
+      .split(/\\r?\\n/u)
+      .flatMap(line => {
+        const cleaned = stripBullet(line);
+        if (!cleaned) return [];
+        return cleaned
+          .split(/\\s*[,،;；]\\s*/u)
+          .map(part => stripBullet(part))
+          .filter(Boolean);
+      });
+  }
+
+  function formatBullets(items) {
+    return (items || [])
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+      .map(item => '• ' + item)
+      .join('\\n');
+  }
+
+  function bulletList(value) {
+    return formatBullets(parseSpokenItems(value));
+  }
+
+  function normalizedForCompare(value) {
+    return String(value || '')
+      .toLocaleLowerCase()
+      .replace(/[\\s\\p{P}\\p{S}]/gu, '');
+  }
+
   function setListeningUi(active, statusText = '') {
     listening = active;
     micButton.classList.toggle('is-listening', active);
     micButton.setAttribute('aria-pressed', String(active));
-    micLabel.textContent = active
-      ? (isNativeApp ? 'Listening… finish in Android window' : 'Listening… tap to stop')
-      : 'Speak in Malayalam';
-    micButton.disabled = Boolean(active && isNativeApp);
+    micLabel.textContent = active ? 'Listening — tap to finish' : 'Start listening';
+    micButton.disabled = false;
     if (statusText) micStatus.textContent = statusText;
-  }
-
-  function appendTranscript(text) {
-    const current = malayalamInput.value.trim();
-    const captured = String(text || '').trim();
-    if (captured) malayalamInput.value = [current, captured].filter(Boolean).join(' ');
   }
 
   function makeBrowserRecognition() {
@@ -93,27 +127,27 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
     instance.interimResults = true;
     instance.maxAlternatives = 1;
     instance.onstart = () => {
-      finalTranscript = malayalamInput.value.trim();
-      setListeningUi(true, 'Listening for Malayalam. Speak clearly and tap to stop.');
+      finalTranscript = parseSpokenItems(malayalamInput.value).join(', ');
+      setListeningUi(true, 'Listening for Malayalam. Short pauses are okay — tap again when finished.');
     };
     instance.onresult = (event) => {
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const chunk = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript = [finalTranscript, chunk.trim()].filter(Boolean).join(' ');
+          finalTranscript = [finalTranscript, chunk.trim()].filter(Boolean).join(', ');
         } else {
           interim += chunk;
         }
       }
-      malayalamInput.value = [finalTranscript, interim.trim()].filter(Boolean).join(' ');
+      malayalamInput.value = bulletList([finalTranscript, interim.trim()].filter(Boolean).join(', '));
     };
     instance.onerror = (event) => {
       const messages = {
         'not-allowed': 'Microphone permission was blocked. Allow microphone access in settings.',
         'service-not-allowed': 'This browser does not allow speech recognition for this site.',
-        'audio-capture': 'No microphone was found. You can type Malayalam into the box instead.',
-        'no-speech': 'No speech was heard. Tap the microphone and try again.',
+        'audio-capture': 'No microphone was found. You can type Malayalam below.',
+        'no-speech': 'No speech was heard yet. Try again when ready.',
         'network': 'Speech recognition needs an internet connection in this browser.'
       };
       micStatus.textContent = messages[event.error] || ('Speech recognition stopped (' + event.error + '). You can type instead.');
@@ -123,7 +157,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
       const knownError = ['Microphone permission', 'This browser', 'No microphone', 'No speech', 'Speech recognition stopped', 'Speech recognition needs'];
       if (!knownError.some(prefix => micStatus.textContent.startsWith(prefix))) {
         micStatus.textContent = malayalamInput.value.trim()
-          ? 'Speech captured. Review the Malayalam words below.'
+          ? 'Speech captured. Review each bullet before translating.'
           : 'Ready when you are.';
       }
     };
@@ -133,7 +167,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
   function setupRecognition() {
     if (isNativeApp) {
       recognitionSupported = true;
-      micStatus.textContent = 'Ready. Tap the microphone; Android will open its speech window.';
+      micStatus.textContent = 'Ready. Tap Start listening, speak naturally, then tap again to finish.';
       return;
     }
     recognition = makeBrowserRecognition();
@@ -142,13 +176,88 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
       micButton.disabled = true;
       micButton.title = 'Speech recognition is not available here. You can still type Malayalam below.';
       micStatus.textContent = 'Speech recognition is not available in this browser. You can type Malayalam below.';
-      micButton.style.opacity = '0.65';
+      micButton.style.opacity = '0.7';
     }
   }
 
-  async function captureNativeSpeech() {
-    if (listening) return;
-    setListeningUi(true, 'Checking microphone permission and opening Android speech recognition…');
+  async function ensureNativeListeners() {
+    if (nativeListenersReady) return nativeListenersReady;
+    nativeListenersReady = (async () => {
+      await SpeechRecognition.addListener('partialResults', event => {
+        if (!listening) return;
+        const current = Array.isArray(event.matches) ? (event.matches[0] || '') : '';
+        if (event.forced) {
+          const candidate = String(current || event.text || '').trim();
+          if (candidate) {
+            const candidateItems = parseSpokenItems(candidate);
+            const prior = normalizedForCompare(nativeFinalItems.join(' '));
+            const next = normalizedForCompare(candidateItems.join(' '));
+            if (next && next !== prior && !(prior && next.includes(prior))) {
+              nativeFinalItems.push(...candidateItems);
+            }
+          }
+          nativeCurrentPartial = '';
+        } else {
+          nativeCurrentPartial = String(current || '').trim();
+        }
+        renderNativeTranscript();
+      });
+
+      await SpeechRecognition.addListener('segmentResults', event => {
+        if (!listening) return;
+        const segment = Array.isArray(event.matches) ? (event.matches[0] || '') : '';
+        const items = parseSpokenItems(segment);
+        if (!items.length) return;
+        nativeFinalItems.push(...items);
+        const partialKey = normalizedForCompare(nativeCurrentPartial);
+        const segmentKey = normalizedForCompare(items.join(' '));
+        if (partialKey && segmentKey && (partialKey === segmentKey || segmentKey.includes(partialKey) || partialKey.includes(segmentKey))) {
+          nativeCurrentPartial = '';
+        }
+        renderNativeTranscript();
+      });
+
+      await SpeechRecognition.addListener('error', event => {
+        if (!listening || nativeStopRequested) return;
+        const code = String(event.code || '').toLowerCase();
+        if (code.includes('no_match') || code.includes('speech_timeout') || code.includes('no-match')) return;
+        nativeFatalError = true;
+        setListeningUi(false, 'Speech recognition paused. Your captured bullets are kept — tap Start listening to continue.');
+        nativeStartPending = false;
+      });
+
+      await SpeechRecognition.addListener('listeningState', event => {
+        if (!listening || nativeStopRequested) return;
+        if (event.reason === 'error' && event.errorCode) {
+          micStatus.textContent = 'Speech service is reconnecting. Keep the app open, or tap the microphone again if it stops.';
+        }
+      });
+    })().catch(error => {
+      nativeListenersReady = null;
+      throw error;
+    });
+    return nativeListenersReady;
+  }
+
+  function renderNativeTranscript() {
+    const items = [...nativeBaseItems, ...nativeFinalItems];
+    const partialItems = parseSpokenItems(nativeCurrentPartial);
+    const lastFinal = normalizedForCompare(items[items.length - 1] || '');
+    for (const item of partialItems) {
+      if (normalizedForCompare(item) !== lastFinal) items.push(item);
+    }
+    malayalamInput.value = formatBullets(items);
+  }
+
+  async function startNativeSpeech() {
+    if (nativeStartPending || listening) return;
+    nativeStartPending = true;
+    nativeStopRequested = false;
+    nativeFatalError = false;
+    nativeBaseItems = parseSpokenItems(malayalamInput.value);
+    nativeFinalItems = [];
+    nativeCurrentPartial = '';
+    setListeningUi(true, 'Preparing the microphone…');
     try {
       const availability = await SpeechRecognition.available();
       if (!availability.available) throw new Error('Speech recognition is not available on this device.');
@@ -157,36 +266,68 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
         permission = await SpeechRecognition.requestPermissions();
       }
       if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission was not granted.');
-      micStatus.textContent = 'Speak Malayalam in the Android speech window, then finish there.';
-      const result = await SpeechRecognition.start({
+      await ensureNativeListeners();
+      await SpeechRecognition.setPTTState({ held: true, mute: true });
+      micStatus.textContent = 'Listening for Malayalam. You can pause between items; tap again only when you are finished.';
+      await SpeechRecognition.start({
         language: 'ml-IN',
         maxResults: 1,
         prompt: 'Speak in Malayalam',
-        partialResults: false,
-        popup: true
+        partialResults: true,
+        popup: false,
+        allowForSilence: 2800,
+        continuousPTT: true,
+        muteRecognizerBeep: true
       });
-      const transcript = Array.isArray(result.matches) ? result.matches[0] : '';
-      if (transcript && transcript.trim()) {
-        appendTranscript(transcript);
-        micStatus.textContent = 'Speech captured. Review the Malayalam words below before translating.';
-      } else {
-        micStatus.textContent = 'No words were recognized. Try again, or type Malayalam below.';
+      if (!nativeStopRequested && !nativeFatalError) {
+        micStatus.textContent = 'Listening… short pauses are okay. Tap the green button to finish and keep your bullet list.';
       }
     } catch (error) {
       console.error('Malayalam speech recognition failed:', error);
-      const reason = error && error.message ? error.message : '';
-      micStatus.textContent = reason.toLowerCase().includes('permission')
+      setListeningUi(false, String(error && error.message || '').toLowerCase().includes('permission')
         ? 'Microphone permission is needed. Allow it in Android Settings, then try again.'
-        : 'Could not start Malayalam speech recognition. Check that a speech service is installed and try again, or type Malayalam below.';
+        : 'Could not start the Malayalam speech service. Check that a speech-recognition service is available, or type Malayalam below.');
     } finally {
-      setListeningUi(false);
+      nativeStartPending = false;
     }
+  }
+
+  async function stopNativeSpeech() {
+    if (!listening && !nativeStartPending) return;
+    nativeStopRequested = true;
+    micStatus.textContent = 'Finishing the last phrase and saving the bullet list…';
+    try { await SpeechRecognition.setPTTState({ held: false, mute: true }); } catch (_) {}
+    try {
+      await SpeechRecognition.forceStop({ timeout: 1800 });
+    } catch (_) {
+      try { await SpeechRecognition.stop(); } catch (_) {}
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+    try {
+      const last = await SpeechRecognition.getLastPartialResult();
+      const candidate = last && last.available ? String(last.text || (last.matches && last.matches[0]) || '').trim() : '';
+      if (candidate) {
+        const candidateItems = parseSpokenItems(candidate);
+        const prior = normalizedForCompare(nativeFinalItems.join(' '));
+        const next = normalizedForCompare(candidateItems.join(' '));
+        if (next && next !== prior && !(prior && next.includes(prior))) {
+          nativeFinalItems.push(...candidateItems);
+        }
+      }
+    } catch (_) {}
+    nativeCurrentPartial = '';
+    renderNativeTranscript();
+    nativeStartPending = false;
+    setListeningUi(false, malayalamInput.value.trim()
+      ? 'Done. Review the Malayalam bullets, then translate them into English.'
+      : 'No words were captured. Try again or type Malayalam below.');
   }
 
   micButton.addEventListener('click', () => {
     if (!recognitionSupported) return;
     if (isNativeApp) {
-      captureNativeSpeech();
+      if (listening || nativeStartPending) stopNativeSpeech();
+      else startNativeSpeech();
       return;
     }
     if (listening) {
@@ -200,9 +341,10 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
       micStatus.textContent = 'The microphone is busy. Wait a moment and tap again.';
     }
   });
+
   // Free, keyless Google Translate web endpoint for this personal-use prototype.
   // It is not an officially supported public API and may change or stop working.
-  async function translateMalayalamToEnglish(text) {
+  async function translateSingleItem(text) {
     const pieces = splitText(text, 350);
     const translatedPieces = [];
     for (const piece of pieces) {
@@ -213,9 +355,19 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
       const data = await response.json();
       const translated = Array.isArray(data?.[0]) ? data[0].map(segment => segment?.[0] || '').join('') : '';
       if (!translated.trim()) throw new Error('The service returned an empty translation.');
-      translatedPieces.push(translated);
+      translatedPieces.push(translated.trim());
     }
     return translatedPieces.join(' ');
+  }
+
+  async function translateMalayalamToEnglish(text) {
+    const items = parseSpokenItems(text);
+    if (!items.length) throw new Error('There are no Malayalam list items to translate.');
+    const translatedItems = [];
+    for (const item of items) {
+      translatedItems.push(await translateSingleItem(item));
+    }
+    return formatBullets(translatedItems);
   }
   function splitText(text, maxChars) {
     const sentences = text.match(/[^.!?।]+[.!?।]?/gu) || [text];
@@ -260,7 +412,8 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
   });
 
   saveButton.addEventListener('click', async () => {
-    const malayalam = malayalamInput.value.trim();
+    const rawMalayalam = malayalamInput.value.trim();
+    const malayalam = bulletList(rawMalayalam);
     if (!malayalam) {
       setMessage('Add a Malayalam note before saving.', true);
       malayalamInput.focus();
@@ -280,7 +433,8 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
         setTranslating(false);
       }
     }
-    english = englishInput.value.trim();
+    english = bulletList(englishInput.value.trim());
+    englishInput.value = english;
     if (!english) {
       setMessage('Please add an English translation before saving, so both languages are kept together.', true);
       englishInput.focus();
@@ -311,6 +465,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 
   clearButton.addEventListener('click', () => {
     if (listening && recognition) recognition.stop();
+    if (isNativeApp && (listening || nativeStartPending)) stopNativeSpeech();
     titleInput.value = '';
     malayalamInput.value = '';
     englishInput.value = '';
@@ -324,7 +479,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
   function deriveTitle(english) {
-    const firstLine = english.split(/\r?\n/)[0].trim();
+    const firstLine = stripBullet(english.split(/\r?\n/)[0].trim());
     return firstLine.length > 42 ? `${firstLine.slice(0, 39)}…` : (firstLine || 'My note');
   }
   function formatDate(iso) {
@@ -363,11 +518,25 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
   }
   function makeLanguageSection(label, text, langClass) {
     const section = document.createElement('section');
-    section.className = `note-language ${langClass}`;
+    section.className = 'note-language ' + langClass;
     section.appendChild(createTextElement('h4', '', label));
-    const paragraph = createTextElement('p', '', text);
-    paragraph.setAttribute('lang', langClass === 'ml' ? 'ml' : 'en');
-    section.appendChild(paragraph);
+    const lines = String(text || '').split(/\\r?\\n/u).map(line => line.trim()).filter(Boolean);
+    const isBulletList = lines.length > 0 && lines.every(line => /^[•·*–-]\\s*/u.test(line));
+    if (isBulletList) {
+      const list = document.createElement('ul');
+      list.className = 'note-bullet-list';
+      for (const line of lines) {
+        const item = document.createElement('li');
+        item.textContent = stripBullet(line);
+        item.setAttribute('lang', langClass === 'ml' ? 'ml' : 'en');
+        list.appendChild(item);
+      }
+      section.appendChild(list);
+    } else {
+      const paragraph = createTextElement('p', '', text);
+      paragraph.setAttribute('lang', langClass === 'ml' ? 'ml' : 'en');
+      section.appendChild(paragraph);
+    }
     return section;
   }
   function renderNotes() {
