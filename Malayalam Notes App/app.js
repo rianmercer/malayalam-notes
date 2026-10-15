@@ -109,6 +109,40 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
       .replace(/[\s\p{P}\p{S}]/gu, '');
   }
 
+  function extractSuffixAfterNormalizedPrefix(rawText, normalizedPrefix) {
+    let matched = '';
+    let rawIndex = 0;
+    for (const char of String(rawText || '')) {
+      rawIndex += char.length;
+      if (!/[\s\p{P}\p{S}]/u.test(char)) matched += char.toLocaleLowerCase();
+      if (matched.length >= normalizedPrefix.length) break;
+    }
+    if (matched !== normalizedPrefix) return '';
+    return String(rawText || '').slice(rawIndex).replace(/^[\s,،;；.!?。]+/u, '').trim();
+  }
+
+  function mergeNativeCandidate(candidateText) {
+    const candidate = String(candidateText || '').trim();
+    if (!candidate) return;
+    const candidateItems = parseSpokenItems(candidate);
+    if (!candidateItems.length) return;
+    const prior = normalizedForCompare(nativeFinalItems.join(' '));
+    const next = normalizedForCompare(candidate);
+    if (!prior) {
+      nativeFinalItems.push(...candidateItems);
+      return;
+    }
+    if (!next || next === prior || prior.includes(next)) return;
+    if (next.includes(prior)) {
+      const suffix = extractSuffixAfterNormalizedPrefix(candidate, prior);
+      const suffixItems = parseSpokenItems(suffix);
+      if (suffixItems.length) nativeFinalItems.push(...suffixItems);
+      else if (candidateItems.length > nativeFinalItems.length) nativeFinalItems = candidateItems;
+      return;
+    }
+    nativeFinalItems.push(...candidateItems);
+  }
+
   function setListeningUi(active, statusText = '') {
     listening = active;
     micButton.classList.toggle('is-listening', active);
@@ -187,15 +221,7 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
         if (!listening) return;
         const current = Array.isArray(event.matches) ? (event.matches[0] || '') : '';
         if (event.forced) {
-          const candidate = String(current || event.accumulatedText || event.accumulated || event.text || '').trim();
-          if (candidate) {
-            const candidateItems = parseSpokenItems(candidate);
-            const prior = normalizedForCompare(nativeFinalItems.join(' '));
-            const next = normalizedForCompare(candidateItems.join(' '));
-            if (next && next !== prior && !(prior && next.includes(prior))) {
-              nativeFinalItems.push(...candidateItems);
-            }
-          }
+          mergeNativeCandidate(current || event.accumulatedText || event.accumulated || event.text || '');
           nativeCurrentPartial = '';
         } else {
           nativeCurrentPartial = String(current || '').trim();
@@ -308,14 +334,7 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
     try {
       const last = await SpeechRecognition.getLastPartialResult();
       const candidate = last && last.available ? String(last.text || (last.matches && last.matches[0]) || '').trim() : '';
-      if (candidate) {
-        const candidateItems = parseSpokenItems(candidate);
-        const prior = normalizedForCompare(nativeFinalItems.join(' '));
-        const next = normalizedForCompare(candidateItems.join(' '));
-        if (next && next !== prior && !(prior && next.includes(prior))) {
-          nativeFinalItems.push(...candidateItems);
-        }
-      }
+      if (candidate) mergeNativeCandidate(candidate);
     } catch (_) {}
     nativeCurrentPartial = '';
     renderNativeTranscript();
