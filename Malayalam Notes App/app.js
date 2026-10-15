@@ -201,16 +201,19 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
   function setupRecognition() {
     if (isNativeApp) {
       recognitionSupported = true;
+      micButton.disabled = false;
       micStatus.textContent = 'Ready. Tap Start listening, speak naturally, then tap again to finish.';
       return;
     }
     recognition = makeBrowserRecognition();
-    recognitionSupported = Boolean(recognition);
-    if (!recognitionSupported) {
-      micButton.disabled = true;
-      micButton.title = 'Speech recognition is not available here. You can still type Malayalam below.';
-      micStatus.textContent = 'Speech recognition is not available in this browser. You can type Malayalam below.';
-      micButton.style.opacity = '0.7';
+    // Never permanently disable the main microphone control merely because Web Speech
+    // is missing. Some Android WebViews expose the native bridge differently; attempt
+    // the native plugin when no browser recognizer is available and show a useful error.
+    recognitionSupported = Boolean(recognition) || typeof SpeechRecognition?.start === 'function';
+    micButton.disabled = false;
+    if (!recognition) {
+      micButton.title = 'Try native Malayalam speech recognition. If unavailable, type Malayalam below.';
+      micStatus.textContent = 'Ready. Tap the mic to try speech recognition, or type Malayalam below.';
     }
   }
 
@@ -292,29 +295,68 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
         permission = await SpeechRecognition.requestPermissions();
       }
       if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission was not granted.');
-      await ensureNativeListeners();
+      try {
+        await ensureNativeListeners();
+      } catch (listenerError) {
+        // Native segment events vary by plugin/device version. Still try the recognizer;
+        // a listener issue should not make the mic button appear broken.
+        console.warn('Speech listener setup was partial:', listenerError);
+      }
       if (nativeStopRequested) return;
-      await SpeechRecognition.setPTTState({ held: true, mute: true });
+      try { await SpeechRecognition.setPTTState({ held: true, mute: true }); } catch (pttError) {
+        console.warn('Push-to-talk state is not supported by this speech service:', pttError);
+      }
       if (nativeStopRequested) return;
-      micStatus.textContent = 'Listening for Malayalam. You can pause between items; tap again only when you are finished.';
-      await SpeechRecognition.start({
-        language: 'ml-IN',
-        maxResults: 1,
-        prompt: 'Speak in Malayalam',
-        partialResults: true,
-        popup: false,
-        allowForSilence: 2800,
-        continuousPTT: true,
-        muteRecognizerBeep: true
-      });
-      if (!nativeStopRequested && !nativeFatalError) {
-        micStatus.textContent = 'Listening… short pauses are okay. Tap the green button to finish and keep your bullet list.';
+      micStatus.textContent = 'Opening Malayalam speech recognition…';
+      try {
+        await SpeechRecognition.start({
+          language: 'ml-IN',
+          maxResults: 1,
+          prompt: 'Speak in Malayalam',
+          partialResults: true,
+          popup: false,
+          allowForSilence: 2800,
+          continuousPTT: true,
+          muteRecognizerBeep: true
+        });
+        if (!nativeStopRequested && !nativeFatalError) {
+          micStatus.textContent = 'Listening… short pauses are okay. Tap the green button to finish and keep your bullet list.';
+        }
+      } catch (inlineError) {
+        // Inline continuous recognition is experimental and some Android speech services
+        // reject it. Fall back to Android's standard speech dialog rather than failing silently.
+        console.warn('Inline speech failed; falling back to system speech dialog:', inlineError);
+        try { await SpeechRecognition.stop(); } catch (_) {}
+        if (nativeStopRequested) return;
+        nativeCurrentPartial = '';
+        micStatus.textContent = 'Switching to the phone’s standard speech recorder…';
+        const result = await SpeechRecognition.start({
+          language: 'ml-IN',
+          maxResults: 5,
+          prompt: 'Speak in Malayalam',
+          partialResults: false,
+          popup: true
+        });
+        const transcript = Array.isArray(result?.matches) ? result.matches[0] : '';
+        if (transcript && transcript.trim()) {
+          mergeNativeCandidate(transcript);
+          renderNativeTranscript();
+          setListeningUi(false, 'Speech captured. Review the Malayalam bullets, then translate them into English.');
+        } else {
+          setListeningUi(false, 'No words were recognized. Try again or type Malayalam below.');
+        }
+        nativeStopRequested = true;
       }
     } catch (error) {
       console.error('Malayalam speech recognition failed:', error);
-      setListeningUi(false, String(error && error.message || '').toLowerCase().includes('permission')
-        ? 'Microphone permission is needed. Allow it in Android Settings, then try again.'
-        : 'Could not start the Malayalam speech service. Check that a speech-recognition service is available, or type Malayalam below.');
+      const details = String(error && (error.message || error.code) || '').toLowerCase();
+      let message = 'Speech recognition could not start. Check the phone’s speech service and try again, or type Malayalam below.';
+      if (details.includes('permission') || details.includes('denied') || details.includes('not-allowed')) {
+        message = 'Microphone permission is needed. Allow it in Android Settings, then return and tap Start listening again.';
+      } else if (details.includes('available') || details.includes('service')) {
+        message = 'This phone could not find a speech-recognition service. Enable Google speech services and its Malayalam language support, then try again.';
+      }
+      setListeningUi(false, message);
     } finally {
       nativeStartPending = false;
     }
@@ -345,10 +387,15 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
   }
 
   micButton.addEventListener('click', () => {
-    if (!recognitionSupported) return;
-    if (isNativeApp) {
+    // Prefer the native plugin on Android. If the browser API is unavailable, try the
+    // native path instead of leaving a dead/disabled microphone button.
+    if (isNativeApp || !recognition) {
       if (listening || nativeStartPending) stopNativeSpeech();
       else startNativeSpeech();
+      return;
+    }
+    if (!recognitionSupported) {
+      micStatus.textContent = 'Speech recognition is unavailable here. You can still type Malayalam below.';
       return;
     }
     if (listening) {
