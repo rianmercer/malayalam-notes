@@ -1,47 +1,27 @@
-# Malayalam Notes (free PWA starter)
+# Malayalam Notes — voice-first Android app
 
-A small phone-friendly app for speaking Malayalam, reviewing the recognized Malayalam text, translating it into English, and saving both versions together.
+This app captures spoken Malayalam thoughts, keeps the recognized Malayalam wording, translates each list item into English, and saves both languages together.
 
-## What works in this version
+## What changed
 
-- Large microphone button configured for Malayalam (`ml-IN`) using the browser's Web Speech API.
-- Editable Malayalam transcript and editable English translation.
-- Saved notes, searchable by title or either language.
-- Edit or delete an existing note.
-- Download a JSON backup and restore it on the same or another device.
-- Installable Progressive Web App (PWA); the app shell can open offline after it has been loaded once.
-- Notes are stored in local browser storage on that device. There is no user account or paid database.
+- The microphone is now a tap-to-start / tap-to-finish control. Android uses inline native recognition instead of a short-lived system popup.
+- The recognizer is configured to tolerate a longer pause before splitting speech into segments, then restart across segments while the button remains active.
+- Recognized segments, commas, and line breaks become bullet items. Each Malayalam item is translated separately so the English list remains in the same order.
+- The app has a warmer notebook-inspired look using forest green, mint, and papaya accents. The current app icon stays as the clean Malayalam-letter mark; a new logo is optional, not required.
 
-## Important limits
+## Current limitations
 
-1. **Speech recognition depends on the browser and connection.** Try a recent version of Chrome first. Some browsers/devices may not provide Malayalam speech recognition. In Chrome, microphone access must be allowed and the site should use HTTPS (GitHub Pages does).
-2. **A transcript is not guaranteed to be word-for-word perfect.** The person should check/correct the Malayalam transcript before translation and saving. Accent, background noise, names, and quantities can affect recognition.
-3. **Translation uses a free, keyless Google Translate web endpoint** (`translate.googleapis.com`), not an officially supported public translation API. It may be changed, restricted, or stop working at any time. Translation accuracy also is not guaranteed. If translation fails, the English field can be filled manually and saved.
-4. **Internet is required** for browser speech recognition on many devices and for automatic translation. The saved notes and app shell can be viewed offline after the app has loaded, but speech recognition/automatic translation may not work offline.
-5. **Privacy:** the saved notes live in this browser on this device. Browser speech recognition may send audio to its provider, and automatic translation sends Malayalam text to Google's translation endpoint. Do not use this prototype for highly sensitive information. Clearing site data can delete notes, so use **Back up** regularly.
-6. There is **no automatic sync** between devices in this version. Install/open the hosted app on your mom's phone to save notes there, or export a backup from one device and import it on another.
+- Continuous recognition uses the Capgo speech-recognition plugin's Capacitor 7 line. It depends on the Android speech service installed on the device, and the actual pause handling and Malayalam accuracy must be tested on the target phone.
+- Speech recognition and translation may need internet. The free, keyless Google Translate web endpoint is unofficial and can change or stop working.
+- Speech recognition can mishear names, quantities, or accents. Review the Malayalam transcript before translating and saving.
+- Notes stay on the phone and are not automatically synchronized between devices. Export backups regularly.
 
-## Run locally
+## Build and install the APK
 
-For microphone support, open it through a local web server rather than directly as a `file://` page. If Python is installed:
+Every push to main runs the [Android APK workflow](../.github/workflows/build-android-apk.yml). Open the latest successful run in the repository's Actions tab and download the malayalam-notes-debug-apk artifact. Extract the ZIP to get app-debug.apk, transfer it to an Android phone, and install it.
 
-```bash
-python -m http.server 8000
-```
+The APK is a debug build for personal testing, not a signed Play Store release. No paid API key is required.
 
-Then open `http://localhost:8000` in Chrome. Internet may still be needed for recognition/translation.
+## Build locally
 
-## Free deployment using GitHub Pages
-
-1. Create a new **public** GitHub repository, for example `malayalam-notes`.
-2. Upload all files from this folder, including the `.github/workflows/pages.yml` file.
-3. In the repository, open **Settings → Pages** and set **Build and deployment → Source** to **GitHub Actions**.
-4. Open the **Actions** tab. The workflow will publish the app. Once it succeeds, open the Pages URL shown in the deployment summary.
-5. On your mom's Android phone, open that HTTPS URL in Chrome, then use the browser menu → **Add to Home screen** (or **Install app** if shown). Allow microphone permission when prompted.
-6. Test the microphone and Malayalam-to-English translation with a few ordinary phrases before depending on it for a shopping trip.
-
-GitHub Pages is free for public repositories, but hosting and third-party translation/speech behavior are subject to their current service terms and limits.
-
-## No credentials needed here
-
-Do not share passwords, private keys, or GitHub access tokens. To get help editing the project later, share a public repo URL or upload the ZIP/file changes.
+From this directory, install dependencies with npm install and create the web bundle with npm run build. Then sync the native project using npx cap sync android. Android Studio / Android SDK tools are needed for a local APK build.
