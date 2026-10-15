@@ -75,17 +75,17 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
     translationStatus.textContent = value ? 'Translating…' : '';
   }
   function stripBullet(value) {
-    return String(value || '').replace(/^\\s*(?:[•·*–-]|\\d+[.)])\\s*/u, '').trim();
+    return String(value || '').replace(/^\s*(?:[•·*–-]|\d+[.)])\s*/u, '').trim();
   }
 
   function parseSpokenItems(value) {
     return String(value || '')
-      .split(/\\r?\\n/u)
+      .split(/\r?\n/u)
       .flatMap(line => {
         const cleaned = stripBullet(line);
         if (!cleaned) return [];
         return cleaned
-          .split(/\\s*[,،;；]\\s*/u)
+          .split(/\s*[,،;；]\s*/u)
           .map(part => stripBullet(part))
           .filter(Boolean);
       });
@@ -96,7 +96,7 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
       .map(item => String(item || '').trim())
       .filter(Boolean)
       .map(item => '• ' + item)
-      .join('\\n');
+      .join('\n');
   }
 
   function bulletList(value) {
@@ -106,7 +106,7 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
   function normalizedForCompare(value) {
     return String(value || '')
       .toLocaleLowerCase()
-      .replace(/[\\s\\p{P}\\p{S}]/gu, '');
+      .replace(/[\s\p{P}\p{S}]/gu, '');
   }
 
   function setListeningUi(active, statusText = '') {
@@ -520,8 +520,8 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
     const section = document.createElement('section');
     section.className = 'note-language ' + langClass;
     section.appendChild(createTextElement('h4', '', label));
-    const lines = String(text || '').split(/\\r?\\n/u).map(line => line.trim()).filter(Boolean);
-    const isBulletList = lines.length > 0 && lines.every(line => /^[•·*–-]\\s*/u.test(line));
+    const lines = String(text || '').split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+    const isBulletList = lines.length > 0 && lines.every(line => /^[•·*–-]\s*/u.test(line));
     if (isBulletList) {
       const list = document.createElement('ul');
       list.className = 'note-bullet-list';
