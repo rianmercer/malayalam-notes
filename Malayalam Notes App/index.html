@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#176b58">
+  <meta name="theme-color" content="#174e40">
   <meta name="description" content="Save Malayalam voice notes with English translations, right on your phone.">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
   <title>Malayalam Notes</title>
 </head>
@@ -16,45 +16,51 @@
     <header class="topbar">
       <div class="brand-mark" aria-hidden="true">മ</div>
       <div>
-        <p class="eyebrow">YOUR EVERYDAY HELPER</p>
-        <h1>Malayalam Notes</h1>
-        <p class="subtitle">Speak it. Save it. Remember it.</p>
+        <p class="eyebrow">YOUR VOICE, KEPT IN TWO LANGUAGES</p>
+        <h1>Malayalam Notes <span class="title-spark" aria-hidden="true">✳</span></h1>
+        <p class="subtitle">Say it in Malayalam. Keep it in both languages.</p>
       </div>
     </header>
+
+    <div class="welcome-ribbon" aria-label="App features">
+      <span class="ribbon-flower" aria-hidden="true">✳</span>
+      <span><strong>Voice first</strong> · One thought at a time · Saved on this phone</span>
+    </div>
 
     <section class="composer panel" aria-labelledby="create-heading">
       <div class="section-heading">
         <div>
-          <p class="eyebrow">NEW NOTE</p>
-          <h2 id="create-heading">What should we remember?</h2>
+          <p class="eyebrow">CAPTURE A THOUGHT</p>
+          <h2 id="create-heading">Catch every little thing.</h2>
         </div>
-        <span class="offline-pill" title="Notes are stored in this browser">On this device</span>
+        <span class="offline-pill" title="Notes are saved on this phone">LOCAL NOTES</span>
       </div>
 
       <label class="field-label" for="note-title">Note title <span class="optional">(optional)</span></label>
-      <input id="note-title" type="text" maxlength="100" placeholder="e.g. Grocery shopping" autocomplete="off">
+      <input id="note-title" type="text" maxlength="100" placeholder="e.g. Today’s groceries" autocomplete="off">
 
       <div class="mic-row">
         <button id="mic-button" class="mic-button" type="button" aria-describedby="mic-help">
-          <span class="mic-symbol" aria-hidden="true">🎙️</span>
-          <span id="mic-label">Speak in Malayalam</span>
+          <span class="mic-symbol" aria-hidden="true">🎙</span>
+          <span class="mic-button-copy"><strong id="mic-label">Start listening</strong><small>Tap again when you’re finished</small></span>
+          <span class="mic-arrow" aria-hidden="true">↗</span>
         </button>
       </div>
-      <p id="mic-help" class="helper">Tap the microphone and speak naturally in Malayalam. You can correct the words below.</p>
+      <p id="mic-help" class="helper">Tap once to keep listening through short pauses. Tap again when the whole list is done.</p>
       <p id="mic-status" class="status" role="status" aria-live="polite">Ready when you are.</p>
 
-      <label class="field-label" for="malayalam-text">Malayalam transcript</label>
-      <textarea id="malayalam-text" rows="3" maxlength="1500" lang="ml" placeholder="ഇവിടെ മലയാളത്തിൽ പറയുന്നതോ എഴുതുന്നതോ വരും…"></textarea>
-      <p class="helper">Please review the transcript before saving. Speech recognition can sometimes hear a word incorrectly.</p>
+      <div class="list-section-label"><label class="field-label" for="malayalam-text">Malayalam words</label><span class="format-pill">BULLET LIST</span></div>
+      <textarea id="malayalam-text" rows="3" maxlength="1500" lang="ml" placeholder="• പാൽ വാങ്ങണം&#10;• അരി വാങ്ങണം"></textarea>
+      <p class="helper">Items stay in the order she says them. Check the Malayalam words before translating.</p>
 
       <div class="translate-row">
-        <button id="translate-button" class="button button-secondary" type="button">Translate to English</button>
+        <button id="translate-button" class="button button-secondary" type="button">Translate list to English</button>
         <span id="translation-status" class="helper" role="status" aria-live="polite"></span>
       </div>
 
       <label class="field-label" for="english-text">English translation</label>
-      <textarea id="english-text" rows="3" maxlength="2000" placeholder="The English translation will appear here. You can edit it."></textarea>
-      <p class="helper">Translations may not be perfect. Check important items and quantities before relying on them.</p>
+      <textarea id="english-text" rows="3" maxlength="2000" placeholder="• Buy milk&#10;• Buy rice"></textarea>
+      <p class="helper">Each Malayalam bullet is translated separately to keep the list order. Check quantities and important words.</p>
 
       <div class="primary-actions">
         <button id="save-button" class="button button-primary" type="button">Save both languages</button>
@@ -66,13 +72,13 @@
     <section class="notes-section" aria-labelledby="notes-heading">
       <div class="section-heading notes-heading">
         <div>
-          <p class="eyebrow">YOUR SAVED NOTES</p>
-          <h2 id="notes-heading">Notes <span id="note-count" class="count-badge">0</span></h2>
+          <p class="eyebrow">YOUR LITTLE MEMORY LIBRARY</p>
+          <h2 id="notes-heading">Saved notes <span id="note-count" class="count-badge">0</span></h2>
         </div>
         <button id="export-button" class="text-button" type="button">Back up</button>
       </div>
       <label class="sr-only" for="search-notes">Search saved notes</label>
-      <input id="search-notes" class="search-input" type="search" placeholder="Search your notes…" autocomplete="off">
+      <input id="search-notes" class="search-input" type="search" placeholder="Find a word or note…" autocomplete="off">
       <div id="notes-list" class="notes-list" aria-live="polite"></div>
       <div id="empty-state" class="empty-state">
         <div class="empty-icon" aria-hidden="true">✍️</div>
@@ -90,7 +96,7 @@
       </details>
     </section>
 
-    <footer class="footer-note">Made with care for everyday life · Free to use</footer>
+    <footer class="footer-note">Made with care, for the everyday things that matter.</footer>
   </main>
   <script type="module" src="./app.js"></script>
 </body>
