@@ -39,6 +39,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK platform and build tools
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -48,6 +50,8 @@ jobs:
           mkdir -p public/icons
           cp icons/icon-192.png public/icons/icon-192.png
           cp icons/icon-512.png public/icons/icon-512.png
+          cp manifest.webmanifest public/manifest.webmanifest
+          cp sw.js public/sw.js
           # Android uses native speech recognition; web service worker is for the PWA only.
 
       - name: Install JavaScript dependencies
