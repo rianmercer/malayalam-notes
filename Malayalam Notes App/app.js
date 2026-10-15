@@ -187,7 +187,7 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
         if (!listening) return;
         const current = Array.isArray(event.matches) ? (event.matches[0] || '') : '';
         if (event.forced) {
-          const candidate = String(current || event.text || '').trim();
+          const candidate = String(current || event.accumulatedText || event.accumulated || event.text || '').trim();
           if (candidate) {
             const candidateItems = parseSpokenItems(candidate);
             const prior = normalizedForCompare(nativeFinalItems.join(' '));
@@ -267,7 +267,9 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
       }
       if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission was not granted.');
       await ensureNativeListeners();
+      if (nativeStopRequested) return;
       await SpeechRecognition.setPTTState({ held: true, mute: true });
+      if (nativeStopRequested) return;
       micStatus.textContent = 'Listening for Malayalam. You can pause between items; tap again only when you are finished.';
       await SpeechRecognition.start({
         language: 'ml-IN',
@@ -463,9 +465,9 @@ import { SpeechRecognition } from '@capgo/capacitor-speech-recognition';
     $('notes-heading').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
-  clearButton.addEventListener('click', () => {
+  clearButton.addEventListener('click', async () => {
     if (listening && recognition) recognition.stop();
-    if (isNativeApp && (listening || nativeStartPending)) stopNativeSpeech();
+    if (isNativeApp && (listening || nativeStartPending)) await stopNativeSpeech();
     titleInput.value = '';
     malayalamInput.value = '';
     englishInput.value = '';
