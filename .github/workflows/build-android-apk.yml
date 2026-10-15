@@ -30,8 +30,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: 'Malayalam Notes App/package.json'
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -50,7 +48,6 @@ jobs:
           mkdir -p public/icons
           cp icons/icon-192.png public/icons/icon-192.png
           cp icons/icon-512.png public/icons/icon-512.png
-          cp manifest.webmanifest public/manifest.webmanifest
           # Android uses native speech recognition; web service worker is for the PWA only.
 
       - name: Install JavaScript dependencies
