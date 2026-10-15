@@ -1,0 +1,85 @@
+name: Build Malayalam Notes Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Malayalam Notes App/**'
+      - '.github/workflows/build-android-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Malayalam Notes App
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: 'Malayalam Notes App/package.json'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform and build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Prepare static app assets
+        run: |
+          mkdir -p public/icons
+          cp icons/icon-192.png public/icons/icon-192.png
+          cp icons/icon-512.png public/icons/icon-512.png
+          cp manifest.webmanifest public/manifest.webmanifest
+          # Android uses native speech recognition; web service worker is for the PWA only.
+
+      - name: Install JavaScript dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Sync native plugins
+        run: npx cap sync android
+
+      - name: Build installable debug APK
+        working-directory: Malayalam Notes App/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: malayalam-notes-debug-apk
+          path: Malayalam Notes App/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Show install instructions
+        if: success()
+        run: |
+          echo "## APK build completed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the **malayalam-notes-debug-apk** artifact from this workflow run." >> "$GITHUB_STEP_SUMMARY"
+          echo "Extract the ZIP and install app-debug.apk on an Android phone." >> "$GITHUB_STEP_SUMMARY"
